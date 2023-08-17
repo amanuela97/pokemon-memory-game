@@ -1,0 +1,39 @@
+.board {
+  margin: 50px 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-gap: 10px;
+}
+
+.scene {
+  width: 200px;
+  aspect-ratio: 1/1;
+  perspective: 600px;
+}
+
+.card {
+  height: 100%;
+  width: 100%;
+  postion: relative;
+  transition: transform 0.5s;
+  transform-style: preserve-3d;
+}
+
+.card__face {
+  position: absolute;
+  height: 100%;
+  width: 100%;
+  backface-visibility: hidden;
+  border: 1px solid #fff;
+  border-radius: 4%;
+  background-color: #1a2759;
+  cursor: pointer;
+}
+
+.card__face--front {
+  transform: rotateY(180deg);
+}
+
+.card.is-flipped {
+  transform: rotateY(180deg);
+}
