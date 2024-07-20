@@ -1,13 +1,13 @@
-import React from 'react';
-import { CARD_COVER } from '../../../gameAPI';
-import './index.css';
+import React from "react";
+import { CARD_COVER } from "../../../utils/helper";
+import "./index.css";
 
 const Card = ({ card, handleChoice, flipped, disabled }) => {
   return (
     <div className="scene">
-      <div className={`card ${flipped && 'is-flipped'}`}>
+      <div className={`card ${flipped && "is-flipped"}`}>
         <img
-          src={card.src}
+          src={card.value}
           alt="card-front"
           className="card__face card__face--front"
         />
@@ -15,7 +15,7 @@ const Card = ({ card, handleChoice, flipped, disabled }) => {
           src={CARD_COVER}
           alt="card-back"
           className="card__face card__face--back"
-          onClick={() => !disabled && handleChoice(card)}
+          onClick={() => !disabled && !card.matched && handleChoice(card)}
         />
       </div>
     </div>
@@ -30,7 +30,9 @@ const Board = ({ cards, handleChoice, choiceOne, choiceTwo, disabled }) => {
           key={card.id}
           card={card}
           handleChoice={handleChoice}
-          flipped={card === choiceOne || card === choiceTwo || card.matched}
+          flipped={
+            card.id === choiceOne || card.id === choiceTwo || card.matched
+          }
           disabled={disabled}
         />
       ))}

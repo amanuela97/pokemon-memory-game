@@ -1,3 +1,3 @@
-# Pokemon Memory Card Game
+# Multiplayer Pokemon Memory Card Game
 
-live -> [game](https://classy-gecko-fbc341.netlify.app)
+[Live Game](https://pokemon-memory-cardgame.netlify.app/)

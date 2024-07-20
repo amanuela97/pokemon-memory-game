@@ -1,51 +1,90 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import './index.css';
-import { generateCards } from '../../gameAPI';
-import Board from './board';
+import React, { useState, useEffect, useRef } from "react";
+import "./index.css";
+import Board from "./board";
+import usePartySocket from "partysocket/react";
+import { useGameContext } from "../../utils/state";
+import { useNavigate } from "react-router-dom";
 
-const Game = ({ amount, setAmmount }) => {
+const Game = () => {
+  const navigate = useNavigate();
+  const { amountOfCards, setAmountOfCards } = useGameContext();
   const [cards, setCards] = useState([]);
+  const [playerStates, setPlayerStates] = useState({});
+  const [currentPlayerId, setCurrentPlayerId] = useState(null);
+  const [currentTurn, setCurrentTurn] = useState(null);
   const [turns, setTurns] = useState(0);
   const [choiceOne, setChoiceOne] = useState(null);
   const [choiceTwo, setChoiceTwo] = useState(null);
   const [disabled, setDisabled] = useState(false);
   const [gameOver, setGameOver] = useState(false);
-  const balloonContainer = useRef(null);
+  const [startGame, setStartGame] = useState(false);
+  let winner = useRef(null);
+  const socket = usePartySocket({
+    host: process.env.REACT_APP_HOST,
+    room: `memory-game-${amountOfCards}`,
+    onOpen() {
+      console.log("connected");
+    },
+    onMessage(e) {
+      const message = JSON.parse(e.data);
+      //console.log("message", message);
 
-  const shuffleCards = useCallback(() => {
-    const generatedCards = generateCards(amount);
-    const shuffledCards = generatedCards.sort(() => Math.random() - 0.5);
-    setChoiceOne(null);
-    setChoiceTwo(null);
-    setGameOver(false);
-    if (turns > 0) {
-      removeBalloons();
-    }
-    setCards(shuffledCards);
-    setTurns(0);
-  }, [amount, turns]);
+      if (message.type === "GAME_STATE") {
+        setCards(message.gameBoard);
+        setCurrentTurn(message.currentTurn);
+        setPlayerStates(message.playerStates);
+        if (!currentPlayerId) setCurrentPlayerId(message.playerId);
+        if (choiceOne && choiceTwo) {
+          //console.log("reset choices");
+          setTimeout(() => {
+            resetTurn();
+          }, 1000);
+        }
+
+        if (Object.keys(message.playerStates).length === 2) {
+          setStartGame(true);
+        }
+      } else if (message.type === "DISCONNECTED") {
+        if (Object.keys(message.playerStates).length < 2) {
+          setStartGame(false);
+        }
+        setPlayerStates(message.playerStates);
+        alert(message.message);
+      }
+    },
+    onClose(e) {
+      console.log(`WebSocket closed with code: ${e.code}`);
+      if (e.reason) {
+        try {
+          const reason = JSON.parse(e.reason);
+          console.log(`Reason: ${reason.message}`);
+          if (reason.type === "FULL") {
+            alert("The room is full. Please try joining another room.");
+          }
+        } catch (e) {
+          console.log(`Failed to parse close reason: ${e.reason}`);
+        }
+      } else {
+        console.log("No reason provided");
+      }
+      menu();
+    },
+    onError(e) {
+      console.log("error", e);
+    },
+  });
 
   const handleChoice = (card) => {
-    choiceOne ? setChoiceTwo(card) : setChoiceOne(card);
-  };
-
-  useEffect(() => {
-    if (choiceOne && choiceTwo) {
+    if (!choiceOne) {
+      setChoiceOne(card.id);
+    } else {
+      setChoiceTwo(card.id);
       setDisabled(true);
-      if (choiceOne.src === choiceTwo.src) {
-        setCards((prevCards) => {
-          return prevCards.map((card) =>
-            card.src === choiceOne.src ? { ...card, matched: true } : card
-          );
-        });
-        resetTurn();
-      } else {
-        setTimeout(() => {
-          resetTurn();
-        }, 1000);
-      }
     }
-  }, [choiceOne, choiceTwo]);
+    socket.send(
+      JSON.stringify({ type: "FLIP_CARD", data: { cardId: card.id } })
+    );
+  };
 
   const resetTurn = () => {
     setChoiceOne(null);
@@ -54,83 +93,91 @@ const Game = ({ amount, setAmmount }) => {
     setDisabled(false);
   };
 
-  const random = (num) => {
-    return Math.floor(Math.random() * num);
-  };
-
-  const getRandomStyles = () => {
-    var r = random(255);
-    var g = random(255);
-    var b = random(255);
-    var mt = random(200);
-    var ml = random(50);
-    var dur = random(5) + 5;
-    return `
-    background-color: rgba(${r},${g},${b},0.7);
-    color: rgba(${r},${g},${b},0.7); 
-    box-shadow: inset -7px -3px 10px rgba(${r - 10},${g - 10},${b - 10},0.7);
-    margin: ${mt}px 0 0 ${ml}px;
-    animation: float ${dur}s ease-in infinite
-    `;
-  };
-
-  const createBalloons = (num) => {
-    const container = document.createElement('div');
-    container.className = 'container';
-    for (let i = num; i > 0; i--) {
-      const balloon = document.createElement('div');
-      balloon.className = 'balloon';
-      balloon.style.cssText = getRandomStyles();
-      container.append(balloon);
+  const menu = () => {
+    socket.close();
+    if (Object.keys(playerStates).length < 1) {
+      setAmountOfCards(null);
     }
-    balloonContainer.current.append(container);
-  };
-
-  const removeBalloons = () => {
-    const container = document.querySelector('.container');
-    if (!container) return;
-    setTimeout(() => {
-      balloonContainer.current.removeChild(container);
-    }, [200]);
+    navigate("/");
   };
 
   useEffect(() => {
     if (cards.every((card) => card.matched) && cards.length > 0) {
-      setGameOver(true);
-      createBalloons(30);
+      const playerEntries = Object.entries(playerStates);
+
+      if (playerEntries.length >= 2) {
+        // Directly compare the scores of the two players
+        const [player1Id, player1Data] = playerEntries[0];
+        const [player2Id, player2Data] = playerEntries[1];
+        winner.current =
+          player1Data.score > player2Data.score ? player1Id : player2Id;
+        socket.send(
+          JSON.stringify({
+            type: "RESET_GAME",
+            data: { amount: amountOfCards },
+          })
+        );
+        setGameOver(true);
+      } else {
+        console.error("Not enough players to determine a winner.");
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cards]);
 
-  const menu = () => {
-    setAmmount(null);
-  };
-
   return (
-    <div className="game balloon-container" ref={balloonContainer}>
+    <div className="game balloon-container press-start-2p-regular">
       <>
         <h1>Memory Game</h1>
         <div className="options">
           <button onClick={menu}>⬅️ Menu</button>
-          <button onClick={shuffleCards}>New Game</button>
         </div>
         {!gameOver ? (
-          <p>Turns: {turns}</p>
+          <>
+            {!startGame && (
+              <p>Game Status: waiting until another player joins...</p>
+            )}
+            <p>Green indicates your turn</p>
+            <p>Turns Taken: {turns}</p>
+            <ul className="user-status">
+              {Object.entries(playerStates).map(([k, v], i) => (
+                <div
+                  key={i}
+                  className={`${
+                    currentTurn === k || v.isTurn ? "current-player" : ""
+                  }`}
+                >
+                  <li>
+                    {k} {currentPlayerId === k && "is you"}
+                  </li>
+                  <li>Score: {v.score}</li>
+                </div>
+              ))}
+            </ul>
+          </>
         ) : (
           <>
             <p>Game Over</p>
             <p>Total turns: {turns}</p>
+            <p>Winner is: {winner.current}</p>
+            {winner.current === currentPlayerId ? (
+              <p style={{ color: "green" }}>You won!!</p>
+            ) : (
+              <p style={{ color: "red" }}>{"You lost :("}</p>
+            )}
           </>
         )}
       </>
-      <Board
-        cards={cards}
-        handleChoice={handleChoice}
-        turns={turns}
-        choiceOne={choiceOne}
-        choiceTwo={choiceTwo}
-        disabled={disabled}
-      />
+      {startGame && (
+        <Board
+          cards={cards}
+          handleChoice={handleChoice}
+          turns={turns}
+          choiceOne={choiceOne}
+          choiceTwo={choiceTwo}
+          disabled={disabled || !playerStates[currentPlayerId]?.isTurn}
+        />
+      )}
     </div>
   );
 };

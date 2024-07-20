@@ -1,8 +1,14 @@
 .game {
-  height: inherit;
   display: flex;
   flex-direction: column;
   align-items: center;
+  width: full; /* Ensure full width */
+  height: full; /* Prevent overflow beyond .app */
+  font-size: 0.8rem;
+}
+
+p {
+  margin: 1rem;
 }
 
 .options {
@@ -15,12 +21,30 @@
   color: #fff;
   padding: 1em;
   cursor: pointer;
-  margin: 0.2em;
+  margin: 0.1em;
 }
 
 .options > button:hover {
   background: #1a275920;
   border: 1px solid #fff;
+}
+
+.user-status {
+  margin: 0 auto;
+  padding: 0; /* Remove default padding/margin */
+  margin: 0;
+  list-style-type: none;
+  width: 80%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5em;
+  font-size: 1.4rem;
+  color: gray;
+}
+
+.current-player {
+  color: green;
 }
 
 .balloon {
@@ -31,7 +55,7 @@
 }
 
 .balloon:before {
-  content: '';
+  content: "";
   height: 75px;
   width: 1px;
   padding: 1px;
@@ -45,7 +69,7 @@
 }
 
 .balloon:after {
-  content: '▲';
+  content: "▲";
   text-align: center;
   display: block;
   position: absolute;
