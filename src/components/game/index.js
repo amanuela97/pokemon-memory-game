@@ -1,4 +1,8 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
+import useSound from "use-sound";
+import switchfx from "../../sounds/switch.mp3";
+import victoryfx from "../../sounds/victory.mp3";
+import lossfx from "../../sounds/loss.mp3";
 import "./index.css";
 import Board from "./board";
 import usePartySocket from "partysocket/react";
@@ -6,23 +10,23 @@ import { useGameContext } from "../../utils/state";
 import { useNavigate } from "react-router-dom";
 
 const Game = () => {
+  const [switchTurn] = useSound(switchfx, { volume: 0.6 });
+  const [playVictory] = useSound(victoryfx, { volume: 0.6 });
+  const [playLoss] = useSound(lossfx, { volume: 0.6 });
   const navigate = useNavigate();
   const { amountOfCards, setAmountOfCards } = useGameContext();
   const [cards, setCards] = useState([]);
   const [playerStates, setPlayerStates] = useState({});
   const [currentPlayerId, setCurrentPlayerId] = useState(null);
   const [currentTurn, setCurrentTurn] = useState(null);
-  const [turns, setTurns] = useState(0);
-  const [choiceOne, setChoiceOne] = useState(null);
-  const [choiceTwo, setChoiceTwo] = useState(null);
-  const [disabled, setDisabled] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [startGame, setStartGame] = useState(false);
-  let winner = useRef(null);
+  const [winner, setWinner] = useState(null);
+
   const socket = usePartySocket({
     host: process.env.REACT_APP_HOST,
     room: `memory-game-${amountOfCards}`,
-    onOpen() {
+    onOpen(e) {
       console.log("connected");
     },
     onMessage(e) {
@@ -33,23 +37,42 @@ const Game = () => {
         setCards(message.gameBoard);
         setCurrentTurn(message.currentTurn);
         setPlayerStates(message.playerStates);
-        if (!currentPlayerId) setCurrentPlayerId(message.playerId);
-        if (choiceOne && choiceTwo) {
-          //console.log("reset choices");
-          setTimeout(() => {
-            resetTurn();
-          }, 1000);
+
+        if (!gameOver && isFlippedAndNotMatched() === 2 && isTurn()) {
+          //console.log("switch");
+          isTurn();
+          switchTurn();
         }
 
-        if (Object.keys(message.playerStates).length === 2) {
+        if (!currentPlayerId) {
+          setCurrentPlayerId(message.playerId);
+        }
+
+        if (!startGame && totalPlayers(message) === 2) {
+          //console.log("start game");
           setStartGame(true);
+          setGameOver(false);
         }
+      } else if (message.type === "GAME_OVER") {
+        // Handle game over logic, e.g., display winner and reset game
+        // console.log("game over");
+        const { winner } = message;
+        if (winner === currentPlayerId) {
+          playVictory();
+        } else if (winner) {
+          playLoss();
+        }
+        setWinner(winner);
+        setGameOver(true);
+        resetBoard();
       } else if (message.type === "DISCONNECTED") {
-        if (Object.keys(message.playerStates).length < 2) {
+        if (totalPlayers(message) < 2) {
           setStartGame(false);
+          setGameOver(true);
+          resetBoard();
         }
-        setPlayerStates(message.playerStates);
-        alert(message.message);
+        //setPlayerStates(message.playerStates);
+        console.log(message.message);
       }
     },
     onClose(e) {
@@ -74,23 +97,31 @@ const Game = () => {
     },
   });
 
+  // Preload utility
+  const preloadImages = (urls) => {
+    urls.forEach((url) => {
+      const img = new Image();
+      img.src = url;
+    });
+  };
+
+  useEffect(() => {
+    const imageUrls = cards.map((card) => card.value);
+    preloadImages(imageUrls);
+  }, [cards]);
+
+  const resetBoard = () =>
+    socket.send(
+      JSON.stringify({
+        type: "RESET_GAME",
+        data: { amount: amountOfCards },
+      })
+    );
+
   const handleChoice = (card) => {
-    if (!choiceOne) {
-      setChoiceOne(card.id);
-    } else {
-      setChoiceTwo(card.id);
-      setDisabled(true);
-    }
     socket.send(
       JSON.stringify({ type: "FLIP_CARD", data: { cardId: card.id } })
     );
-  };
-
-  const resetTurn = () => {
-    setChoiceOne(null);
-    setChoiceTwo(null);
-    setTurns((prevTurns) => prevTurns + 1);
-    setDisabled(false);
   };
 
   const menu = () => {
@@ -101,29 +132,12 @@ const Game = () => {
     navigate("/");
   };
 
-  useEffect(() => {
-    if (cards.every((card) => card.matched) && cards.length > 0) {
-      const playerEntries = Object.entries(playerStates);
+  const isFlippedAndNotMatched = () =>
+    cards.filter((card) => card.isFlipped && !card.matched).length;
 
-      if (playerEntries.length >= 2) {
-        // Directly compare the scores of the two players
-        const [player1Id, player1Data] = playerEntries[0];
-        const [player2Id, player2Data] = playerEntries[1];
-        winner.current =
-          player1Data.score > player2Data.score ? player1Id : player2Id;
-        socket.send(
-          JSON.stringify({
-            type: "RESET_GAME",
-            data: { amount: amountOfCards },
-          })
-        );
-        setGameOver(true);
-      } else {
-        console.error("Not enough players to determine a winner.");
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cards]);
+  const isTurn = () => currentTurn === currentPlayerId;
+
+  const totalPlayers = (message) => Object.keys(message.playerStates).length;
 
   return (
     <div className="game balloon-container press-start-2p-regular">
@@ -132,21 +146,39 @@ const Game = () => {
         <div className="options">
           <button onClick={menu}>⬅️ Menu</button>
         </div>
-        {!gameOver ? (
+        {gameOver ? (
+          <>
+            <p>Game Over</p>
+            {winner ? <p>Winner is: {winner}</p> : <p>Game is Tied</p>}
+            {winner === currentPlayerId ? (
+              <>
+                {winner && (
+                  <p style={{ color: "green", margin: 0 }}>You won!!</p>
+                )}
+                <p style={{ color: "blue" }}>
+                  Score: {playerStates[currentPlayerId]?.score}
+                </p>
+              </>
+            ) : (
+              <>
+                {winner && (
+                  <p style={{ color: "red", margin: 0 }}>{"You lost :("}</p>
+                )}
+                <p style={{ color: "blue" }}>
+                  Score: {playerStates[currentPlayerId]?.score}
+                </p>
+              </>
+            )}
+          </>
+        ) : (
           <>
             {!startGame && (
               <p>Game Status: waiting until another player joins...</p>
             )}
             <p>Green indicates your turn</p>
-            <p>Turns Taken: {turns}</p>
             <ul className="user-status">
               {Object.entries(playerStates).map(([k, v], i) => (
-                <div
-                  key={i}
-                  className={`${
-                    currentTurn === k || v.isTurn ? "current-player" : ""
-                  }`}
-                >
+                <div key={i} className={`${v.isTurn ? "current-player" : ""}`}>
                   <li>
                     {k} {currentPlayerId === k && "is you"}
                   </li>
@@ -155,27 +187,13 @@ const Game = () => {
               ))}
             </ul>
           </>
-        ) : (
-          <>
-            <p>Game Over</p>
-            <p>Total turns: {turns}</p>
-            <p>Winner is: {winner.current}</p>
-            {winner.current === currentPlayerId ? (
-              <p style={{ color: "green" }}>You won!!</p>
-            ) : (
-              <p style={{ color: "red" }}>{"You lost :("}</p>
-            )}
-          </>
         )}
       </>
       {startGame && (
         <Board
           cards={cards}
           handleChoice={handleChoice}
-          turns={turns}
-          choiceOne={choiceOne}
-          choiceTwo={choiceTwo}
-          disabled={disabled || !playerStates[currentPlayerId]?.isTurn}
+          disabled={currentTurn !== currentPlayerId}
         />
       )}
     </div>

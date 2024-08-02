@@ -3,6 +3,11 @@ import { CARD_COVER } from "../../../utils/helper";
 import "./index.css";
 
 const Card = ({ card, handleChoice, flipped, disabled }) => {
+  const handleClick = () => {
+    if (!disabled && !card.matched) {
+      handleChoice(card);
+    }
+  };
   return (
     <div className="scene">
       <div className={`card ${flipped && "is-flipped"}`}>
@@ -15,14 +20,14 @@ const Card = ({ card, handleChoice, flipped, disabled }) => {
           src={CARD_COVER}
           alt="card-back"
           className="card__face card__face--back"
-          onClick={() => !disabled && !card.matched && handleChoice(card)}
+          onClick={handleClick}
         />
       </div>
     </div>
   );
 };
 
-const Board = ({ cards, handleChoice, choiceOne, choiceTwo, disabled }) => {
+const Board = ({ cards, handleChoice, disabled }) => {
   return (
     <div className="board">
       {cards.map((card) => (
@@ -30,10 +35,8 @@ const Board = ({ cards, handleChoice, choiceOne, choiceTwo, disabled }) => {
           key={card.id}
           card={card}
           handleChoice={handleChoice}
-          flipped={
-            card.id === choiceOne || card.id === choiceTwo || card.matched
-          }
-          disabled={disabled}
+          flipped={card.isFlipped || card.matched}
+          disabled={disabled || card.isFlipped || card.matched}
         />
       ))}
     </div>
